@@ -7,13 +7,19 @@ const db = mysql.createConnection({
   database: process.env.DB_NAME,
   port: process.env.DB_PORT || 3306,
   timezone: "+05:30",
+
+  // Required for Aiven MySQL
+  ssl: {
+    rejectUnauthorized: false,
+  },
 });
 
 db.connect((err) => {
   if (err) {
     console.error("❌ Database connection failed:", err);
+    process.exit(1);
   } else {
-    console.log("✅ Connected to MySQL database");
+    console.log("✅ Connected to Aiven MySQL database");
   }
 });
 
