@@ -1,8 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const db = require("../db");
-const bcrypt = require("bcryptjs");
-
+const bcrypt = require("bcrypt");
 /* ================= PASSWORD VALIDATOR ================= */
 const isPasswordValid = (password) => {
   const regex =
