@@ -1,11 +1,10 @@
+
 import React from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 function DoctorNavbar({ onLogout }) {
+  const name = sessionStorage.getItem("userName") || "Doctor";
   const navigate = useNavigate();
-
-  // ✅ Universal storage
-  const name = sessionStorage.getItem("userName");
 
   const handleLogout = () => {
     onLogout();
@@ -14,111 +13,165 @@ function DoctorNavbar({ onLogout }) {
   };
 
   return (
-    <nav style={navStyle}>
-      {/* Welcome Message */}
-      <div style={logoStyle}>
-        <span style={logoIcon}>👨‍⚕️</span>
-        Welcome, {name ? `Dr. ${name}` : "Doctor"}
+    <nav style={styles.navbar}>
+      {/* BRAND */}
+      <div style={styles.left}>
+        <span style={styles.brandIcon}>✚</span>
+
+        <span style={styles.brand}>
+          health<span style={styles.brandAccent}>wave</span>
+        </span>
+
+        <span style={styles.portalLabel}>DOCTOR PORTAL</span>
       </div>
 
-      <ul style={menuStyle}>
-        <li>
-          <Link to="/doctor-dashboard" style={linkStyle}>
-            Dashboard
-          </Link>
-        </li>
+      {/* PROFILE AND LOGOUT */}
+      <div style={styles.right}>
+        <button
+          type="button"
+          onClick={() => navigate("/doctor/profile")}
+          style={styles.profile}
+          title="View Doctor Profile"
+          aria-label="Open doctor profile"
+        >
+          <div style={styles.avatar}>
+            {name.charAt(0).toUpperCase()}
+          </div>
 
-        <li>
-          <Link to="/doctor/appointments" style={linkStyle}>
-            Appointments
-          </Link>
-        </li>
+          <div style={styles.profileDetails}>
+            <div style={styles.name}>{name}</div>
+            <div style={styles.role}>DOCTOR</div>
+          </div>
+        </button>
 
-        <li>
-          <Link to="/doctor/availability" style={linkStyle}>
-            Availability
-          </Link>
-        </li>
-
-        <li>
-          <Link to="/doctor/prescriptions" style={linkStyle}>
-            Prescriptions
-          </Link>
-        </li>
-
-        <li>
-          <Link to="/doctor/reports" style={linkStyle}>
-            Reports
-          </Link>
-        </li>
-
-        <li>
-          <button onClick={handleLogout} style={logoutBtn}>
-            Logout
-          </button>
-        </li>
-      </ul>
+        <button
+          type="button"
+          onClick={handleLogout}
+          style={styles.logoutButton}
+        >
+          ↪ Logout
+        </button>
+      </div>
     </nav>
   );
 }
 
-/* ================= STYLES (UNCHANGED) ================= */
+const styles = {
+  navbar: {
+    width: "100%",
+    minHeight: "68px",
+    padding: "10px 28px",
+    boxSizing: "border-box",
+    background: "#0D1011",
+    borderBottom: "1px solid #24292B",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: "15px",
+    position: "relative",
+    zIndex: 1000
+  },
 
-const navStyle = {
-  background: "linear-gradient(90deg, #0f4c81, #1976d2)",
-  padding: "14px 42px",
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  boxShadow: "0 6px 18px rgba(0,0,0,0.15)",
-  position: "sticky",
-  top: 0,
-  zIndex: 1000
-};
+  left: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    flexShrink: 0
+  },
 
-const logoStyle = {
-  display: "flex",
-  alignItems: "center",
-  gap: "10px",
-  color: "#ffffff",
-  fontSize: "20px",
-  fontWeight: "700",
-  letterSpacing: "0.4px"
-};
+  brandIcon: {
+    width: "36px",
+    height: "36px",
+    borderRadius: "9px",
+    background: "#20DCC0",
+    color: "#071411",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "22px",
+    fontWeight: "800"
+  },
 
-const logoIcon = {
-  fontSize: "22px"
-};
+  brand: {
+    color: "#F3F4F6",
+    fontSize: "20px",
+    fontWeight: "800"
+  },
 
-const menuStyle = {
-  listStyle: "none",
-  display: "flex",
-  gap: "26px",
-  margin: 0,
-  padding: 0,
-  alignItems: "center"
-};
+  brandAccent: {
+    color: "#20DCC0"
+  },
 
-const linkStyle = {
-  color: "#e3f2fd",
-  textDecoration: "none",
-  fontSize: "15px",
-  fontWeight: "500",
-  padding: "6px 2px",
-  borderBottom: "2px solid transparent",
-  transition: "border-color 0.2s ease"
-};
+  portalLabel: {
+    marginLeft: "12px",
+    paddingLeft: "16px",
+    borderLeft: "1px solid #343D3E",
+    color: "#899497",
+    fontSize: "10px",
+    letterSpacing: "1.4px",
+    fontWeight: "700"
+  },
 
-const logoutBtn = {
-  backgroundColor: "#ffffff",
-  color: "#0f4c81",
-  border: "none",
-  padding: "8px 20px",
-  borderRadius: "20px",
-  cursor: "pointer",
-  fontWeight: "600",
-  fontSize: "14px",
-  boxShadow: "0 2px 6px rgba(0,0,0,0.15)"
+  right: {
+    display: "flex",
+    alignItems: "center",
+    gap: "18px",
+    flexShrink: 0
+  },
+
+  profile: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    background: "transparent",
+    border: "none",
+    padding: "5px",
+    borderRadius: "9px",
+    cursor: "pointer",
+    textAlign: "left"
+  },
+
+  profileDetails: {
+    display: "flex",
+    flexDirection: "column"
+  },
+
+  avatar: {
+    width: "36px",
+    height: "36px",
+    borderRadius: "9px",
+    background: "#203A34",
+    color: "#20DCC0",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontWeight: "700",
+    fontSize: "15px"
+  },
+
+  name: {
+    color: "#F3F4F6",
+    fontSize: "12px",
+    fontWeight: "600",
+    marginBottom: "4px"
+  },
+
+  role: {
+    color: "#899497",
+    fontSize: "9px",
+    letterSpacing: "1px"
+  },
+
+  logoutButton: {
+    background: "#202626",
+    color: "#B9C2C2",
+    border: "1px solid #343D3E",
+    borderRadius: "7px",
+    padding: "9px 15px",
+    fontSize: "11px",
+    fontWeight: "600",
+    cursor: "pointer"
+  }
 };
 
 export default DoctorNavbar;

@@ -1,98 +1,325 @@
-// routes/doctors.js
+
 const express = require("express");
 const router = express.Router();
 const db = require("../db");
-const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 
-const JWT_SECRET = "your_jwt_secret";
+const {
+  authenticateToken,
+  authorizeRoles
+} = require("../middleware/auth");
 
-// Middleware to check admin role
-function adminAuth(req, res, next) {
-  const token = req.headers["authorization"];
-  if (!token) return res.status(401).json({ msg: "No token provided" });
+// ================= PASSWORD REGEX =================
 
-  jwt.verify(token, JWT_SECRET, (err, decoded) => {
-    if (err) return res.status(401).json({ msg: "Token invalid" });
-    if (decoded.role !== "admin") return res.status(403).json({ msg: "Access denied" });
-    req.user = decoded;
-    next();
-  });
-}
+const passwordRegex =
+  /^[A-Z](?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{8,}$/;
 
-//////////////////////////////////////////////////////////
-// ✅ GET ALL DOCTORS (FIXED)
-//////////////////////////////////////////////////////////
-router.get("/", adminAuth, (req, res) => {
-  db.query(
-    "SELECT id, name, email, password, IFNULL(specialization,'') AS specialization FROM users WHERE role='doctor'",
-    (err, results) => {
-      if (err) return res.status(500).json(err);
+// ================= GET ALL DOCTORS =================
+// Admin only
 
-      res.json(results);
-    }
-  );
-});
+router.get(
+  "/",
+  authenticateToken,
+  authorizeRoles("admin"),
+  (req, res) => {
+    const query = `
+      SELECT
+        id,
+        name,
+        email,
+        IFNULL(specialization, '') AS specialization
+      FROM users
+      WHERE role = 'doctor'
+      ORDER BY id DESC
+    `;
 
-//////////////////////////////////////////////////////////
-// ✅ ADD DOCTOR (FIXED - specialization added)
-//////////////////////////////////////////////////////////
-router.post("/", adminAuth, async (req, res) => {
-  try {
+    db.query(query, (err, results) => {
+      if (err) {
+        console.error("Fetch doctors error:", err);
+
+        return res.status(500).json({
+          success: false,
+          message: "Unable to fetch doctors"
+        });
+      }
+
+      return res.json({
+        success: true,
+        doctors: results
+      });
+    });
+  }
+);
+
+// ================= ADD DOCTOR =================
+// Admin only
+
+router.post(
+  "/",
+  authenticateToken,
+  authorizeRoles("admin"),
+  async (req, res) => {
     const { name, email, password, specialization } = req.body;
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    db.query(
-      "INSERT INTO users (name, email, password, role, specialization) VALUES (?, ?, ?, ?, ?)",
-      [name, email, hashedPassword, "doctor", specialization],
-      (err, result) => {
-        if (err) return res.status(500).json(err);
-
-        res.json({ msg: "Doctor added successfully" });
-      }
-    );
-  } catch (err) {
-    res.status(500).json({ msg: "Server error" });
-  }
-});
-
-//////////////////////////////////////////////////////////
-// ✅ UPDATE DOCTOR (FIXED - specialization added)
-//////////////////////////////////////////////////////////
-router.put("/:id", adminAuth, async (req, res) => {
-  try {
-    const { name, email, password, specialization } = req.body;
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    db.query(
-      "UPDATE users SET name=?, email=?, password=?, specialization=? WHERE id=? AND role='doctor'",
-      [name, email, hashedPassword, specialization, req.params.id],
-      (err, result) => {
-        if (err) return res.status(500).json(err);
-
-        res.json({ msg: "Doctor updated successfully" });
-      }
-    );
-  } catch (err) {
-    res.status(500).json({ msg: "Server error" });
-  }
-});
-
-//////////////////////////////////////////////////////////
-// ✅ DELETE DOCTOR (UNCHANGED)
-//////////////////////////////////////////////////////////
-router.delete("/:id", adminAuth, (req, res) => {
-  db.query(
-    "DELETE FROM users WHERE id=? AND role='doctor'",
-    [req.params.id],
-    (err, result) => {
-      if (err) return res.status(500).json(err);
-
-      res.json({ msg: "Doctor deleted successfully" });
+    if (
+      !name?.trim() ||
+      !email?.trim() ||
+      !password ||
+      !specialization?.trim()
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "All fields are required"
+      });
     }
-  );
-});
+
+    if (!passwordRegex.test(password)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Password must start with a capital letter, contain at least 8 characters, one number and one special character"
+      });
+    }
+
+    const normalizedName = name.trim();
+    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedSpecialization = specialization.trim();
+
+    try {
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      const query = `
+        INSERT INTO users
+          (name, email, password, role, specialization)
+        VALUES (?, ?, ?, 'doctor', ?)
+      `;
+
+      db.query(
+        query,
+        [
+          normalizedName,
+          normalizedEmail,
+          hashedPassword,
+          normalizedSpecialization
+        ],
+        (err, result) => {
+          if (err) {
+            console.error("Add doctor error:", err);
+
+            if (err.code === "ER_DUP_ENTRY") {
+              return res.status(400).json({
+                success: false,
+                message: "Email already exists"
+              });
+            }
+
+            return res.status(500).json({
+              success: false,
+              message: "Unable to add doctor"
+            });
+          }
+
+          return res.status(201).json({
+            success: true,
+            message: "Doctor added successfully",
+            doctorId: result.insertId
+          });
+        }
+      );
+    } catch (error) {
+      console.error("Doctor password hashing error:", error);
+
+      return res.status(500).json({
+        success: false,
+        message: "Server error"
+      });
+    }
+  }
+);
+
+// ================= UPDATE DOCTOR =================
+// Admin only
+
+router.put(
+  "/:id",
+  authenticateToken,
+  authorizeRoles("admin"),
+  async (req, res) => {
+    const { id } = req.params;
+
+    const {
+      name,
+      email,
+      password,
+      specialization
+    } = req.body;
+
+    if (!/^[1-9]\d*$/.test(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid doctor ID"
+      });
+    }
+
+    if (
+      !name?.trim() ||
+      !email?.trim() ||
+      !specialization?.trim()
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Name, email and specialization are required"
+      });
+    }
+
+    const normalizedName = name.trim();
+    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedSpecialization = specialization.trim();
+
+    let updateQuery;
+    let values;
+
+    try {
+      if (password) {
+        if (!passwordRegex.test(password)) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Password must start with a capital letter, contain at least 8 characters, one number and one special character"
+          });
+        }
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        updateQuery = `
+          UPDATE users
+          SET name = ?,
+              email = ?,
+              password = ?,
+              specialization = ?
+          WHERE id = ? AND role = 'doctor'
+        `;
+
+        values = [
+          normalizedName,
+          normalizedEmail,
+          hashedPassword,
+          normalizedSpecialization,
+          id
+        ];
+      } else {
+        updateQuery = `
+          UPDATE users
+          SET name = ?,
+              email = ?,
+              specialization = ?
+          WHERE id = ? AND role = 'doctor'
+        `;
+
+        values = [
+          normalizedName,
+          normalizedEmail,
+          normalizedSpecialization,
+          id
+        ];
+      }
+
+      db.query(updateQuery, values, (err, result) => {
+        if (err) {
+          console.error("Update doctor error:", err);
+
+          if (err.code === "ER_DUP_ENTRY") {
+            return res.status(400).json({
+              success: false,
+              message: "Email already exists"
+            });
+          }
+
+          return res.status(500).json({
+            success: false,
+            message: "Doctor update failed"
+          });
+        }
+
+        if (result.affectedRows === 0) {
+          return res.status(404).json({
+            success: false,
+            message: "Doctor not found or no changes made"
+          });
+        }
+
+        return res.json({
+          success: true,
+          message: "Doctor updated successfully"
+        });
+      });
+    } catch (error) {
+      console.error("Doctor update error:", error);
+
+      return res.status(500).json({
+        success: false,
+        message: "Doctor update failed"
+      });
+    }
+  }
+);
+
+// ================= DELETE DOCTOR =================
+// Admin only
+
+router.delete(
+  "/:id",
+  authenticateToken,
+  authorizeRoles("admin"),
+  (req, res) => {
+    const { id } = req.params;
+
+    if (!/^[1-9]\d*$/.test(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid doctor ID"
+      });
+    }
+
+    const query = `
+      DELETE FROM users
+      WHERE id = ? AND role = 'doctor'
+    `;
+
+    db.query(query, [id], (err, result) => {
+      if (err) {
+        console.error("Delete doctor error:", err);
+
+        if (
+          err.code === "ER_ROW_IS_REFERENCED_2" ||
+          err.code === "ER_ROW_IS_REFERENCED"
+        ) {
+          return res.status(409).json({
+            success: false,
+            message:
+              "Cannot delete this doctor because related appointments or medical records exist"
+          });
+        }
+
+        return res.status(500).json({
+          success: false,
+          message: "Doctor deletion failed"
+        });
+      }
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "Doctor not found"
+        });
+      }
+
+      return res.json({
+        success: true,
+        message: "Doctor deleted successfully"
+      });
+    });
+  }
+);
 
 module.exports = router;

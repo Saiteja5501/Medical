@@ -1,8 +1,8 @@
+
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import API from "../api";
 
 function DoctorPrescriptions() {
-  const doctorId = Number(sessionStorage.getItem("doctorId"));
-
   const [acceptedPatients, setAcceptedPatients] = useState([]);
   const [selectedPatientId, setSelectedPatientId] = useState("");
   const [selectedPatientName, setSelectedPatientName] = useState("");
@@ -12,31 +12,55 @@ function DoctorPrescriptions() {
   const [instructions, setInstructions] = useState("");
   const [searchText, setSearchText] = useState("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [status, setStatus] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const wrapperRef = useRef(null);
 
+  /* ================= FETCH ACCEPTED PATIENTS ================= */
   const fetchAcceptedPatients = useCallback(async () => {
-    if (!doctorId) return;
-    const res = await fetch(
-      `http://localhost:5000/prescriptions/doctor/${doctorId}/accepted-patients`
-    );
-    const data = await res.json();
-    if (data.success) setAcceptedPatients(data.patients);
-  }, [doctorId]);
+    try {
+      const doctorId = sessionStorage.getItem("doctorId");
+
+      if (!doctorId) {
+        setStatus("Error: Doctor login information not found");
+        return;
+      }
+
+      const res = await API.get(
+        `/prescriptions/doctor/${doctorId}/accepted-patients`
+      );
+
+      if (res.data.success) {
+        setAcceptedPatients(res.data.patients || []);
+      } else {
+        setAcceptedPatients([]);
+      }
+    } catch (error) {
+      console.error("Accepted Patients Error:", error);
+      setStatus(
+        error.response?.data?.message || "Unable to load accepted patients"
+      );
+    }
+  }, []);
 
   useEffect(() => {
     fetchAcceptedPatients();
   }, [fetchAcceptedPatients]);
 
+  /* ================= CLICK OUTSIDE DROPDOWN ================= */
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (wrapperRef.current && !wrapperRef.current.contains(e.target)) {
         setDropdownOpen(false);
       }
     };
+
     document.addEventListener("mousedown", handleClickOutside);
-    return () =>
+
+    return () => {
       document.removeEventListener("mousedown", handleClickOutside);
+    };
   }, []);
 
   const handleSelectPatient = (patient) => {
@@ -46,6 +70,7 @@ function DoctorPrescriptions() {
     setDropdownOpen(false);
   };
 
+  /* ================= MEDICINE FIELDS ================= */
   const addMedicineField = () => {
     setMedicines([
       ...medicines,
@@ -65,36 +90,60 @@ function DoctorPrescriptions() {
     );
   };
 
+  /* ================= FORMAT MEDICINES ================= */
   const formatMedicinesForStorage = () =>
     medicines
       .map(
         (m) =>
-          `${m.name} | ${m.dosage} | ${m.frequency} | ${m.duration}`
+          `${m.name.trim()} | ${m.dosage.trim()} | ${m.frequency.trim()} | ${m.duration.trim()}`
       )
       .join("; ");
 
+  /* ================= SUBMIT PRESCRIPTION ================= */
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!selectedPatientId) return alert("Please select a patient");
-    if (medicines.some((m) => !m.name.trim()))
-      return alert("Medicine name required");
+    setStatus("");
 
-    await fetch("http://localhost:5000/prescriptions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        doctorId,
+    if (!selectedPatientId) {
+      setStatus("Error: Please select a patient");
+      return;
+    }
+
+    if (medicines.some((m) => !m.name.trim())) {
+      setStatus("Error: Medicine name is required");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const response = await API.post("/prescriptions", {
         patientId: selectedPatientId,
         medicine: formatMedicinesForStorage(),
         instructions
-      })
-    });
+      });
 
-    alert("Prescription added successfully!");
-    setSelectedPatientId("");
-    setSelectedPatientName("");
-    setMedicines([{ name: "", dosage: "", frequency: "", duration: "" }]);
-    setInstructions("");
+      if (response.data.success) {
+        setStatus("Prescription added successfully!");
+
+        setSelectedPatientId("");
+        setSelectedPatientName("");
+        setMedicines([
+          { name: "", dosage: "", frequency: "", duration: "" }
+        ]);
+        setInstructions("");
+      } else {
+        setStatus(response.data.message || "Error adding prescription");
+      }
+    } catch (error) {
+      console.error("Prescription Error:", error);
+
+      setStatus(
+        error.response?.data?.message || "Unable to save prescription"
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   const filteredPatients = acceptedPatients.filter((p) =>
@@ -105,6 +154,7 @@ function DoctorPrescriptions() {
     <div style={page}>
       <div style={container}>
         <h1 style={title}>Doctor Prescription</h1>
+
         <p style={subtitle}>
           Create and manage prescriptions for accepted patients
         </p>
@@ -112,6 +162,7 @@ function DoctorPrescriptions() {
         <form onSubmit={handleSubmit} style={card} ref={wrapperRef}>
           {/* Patient Selection */}
           <label style={label}>Patient</label>
+
           <div
             style={dropdown}
             onClick={() => setDropdownOpen(!dropdownOpen)}
@@ -128,6 +179,7 @@ function DoctorPrescriptions() {
                 onChange={(e) => setSearchText(e.target.value)}
                 style={search}
               />
+
               <ul style={list}>
                 {filteredPatients.length ? (
                   filteredPatients.map((p) => (
@@ -149,6 +201,7 @@ function DoctorPrescriptions() {
 
           {/* Medicines */}
           <label style={label}>Medicines</label>
+
           {medicines.map((m, i) => (
             <div key={i} style={medicineRow}>
               <input
@@ -159,6 +212,7 @@ function DoctorPrescriptions() {
                   updateMedicineField(i, "name", e.target.value)
                 }
               />
+
               <input
                 style={input}
                 placeholder="Dosage"
@@ -167,6 +221,7 @@ function DoctorPrescriptions() {
                   updateMedicineField(i, "dosage", e.target.value)
                 }
               />
+
               <input
                 style={input}
                 placeholder="Frequency"
@@ -175,6 +230,7 @@ function DoctorPrescriptions() {
                   updateMedicineField(i, "frequency", e.target.value)
                 }
               />
+
               <input
                 style={input}
                 placeholder="Duration"
@@ -196,12 +252,17 @@ function DoctorPrescriptions() {
             </div>
           ))}
 
-          <button type="button" style={add} onClick={addMedicineField}>
+          <button
+            type="button"
+            style={add}
+            onClick={addMedicineField}
+          >
             + Add Medicine
           </button>
 
           {/* Instructions */}
           <label style={label}>Doctor Instructions</label>
+
           <textarea
             style={textarea}
             placeholder="Additional instructions for the patient"
@@ -209,9 +270,23 @@ function DoctorPrescriptions() {
             onChange={(e) => setInstructions(e.target.value)}
           />
 
-          <button type="submit" style={submit}>
-            Save Prescription
+          <button
+            type="submit"
+            style={submit}
+            disabled={loading}
+          >
+            {loading ? "Saving..." : "Save Prescription"}
           </button>
+
+          {status && (
+            <p style={{
+              ...statusStyle,
+              color: status.startsWith("Error") ||
+                status.includes("Unable") ? "#dc2626" : "#15803d"
+            }}>
+              {status}
+            </p>
+          )}
         </form>
       </div>
     </div>
@@ -220,46 +295,54 @@ function DoctorPrescriptions() {
 
 export default DoctorPrescriptions;
 
-/* ================= PROFESSIONAL STYLES ================= */
+
+/* ================= DARK HEALTHWAVE STYLES ================= */
 
 const page = {
   minHeight: "100vh",
-  background: "#f1f5f9",
-  padding: "40px",
-  fontFamily: "Inter, system-ui, sans-serif"
+  boxSizing: "border-box",
+  background: "#0B0D0E",
+  padding: "35px 32px",
+  fontFamily: "Arial, sans-serif",
+  color: "#E8EEEE"
 };
 
 const container = {
   maxWidth: "1050px",
-  margin: "auto"
+  margin: "0 auto"
 };
 
 const title = {
-  textAlign: "center",
-  fontSize: "30px",
+  textAlign: "left",
+  fontSize: "28px",
   fontWeight: "700",
-  color: "#0f172a"
+  color: "#F1F5F5",
+  margin: "0 0 9px"
 };
 
 const subtitle = {
-  textAlign: "center",
-  color: "#64748b",
-  marginBottom: "35px"
+  textAlign: "left",
+  color: "#899497",
+  fontSize: "14px",
+  marginBottom: "30px",
+  lineHeight: 1.6
 };
 
 const card = {
-  background: "#ffffff",
-  padding: "32px",
-  borderRadius: "18px",
-  boxShadow: "0 20px 40px rgba(0,0,0,0.08)"
+  background: "#181C1D",
+  padding: "30px",
+  borderRadius: "15px",
+  border: "1px solid #293333",
+  boxShadow: "0 12px 35px rgba(0,0,0,0.2)"
 };
 
 const label = {
   display: "block",
-  marginTop: "20px",
-  marginBottom: "8px",
+  marginTop: "22px",
+  marginBottom: "9px",
   fontWeight: "600",
-  color: "#1e293b"
+  fontSize: "13px",
+  color: "#DCE5E5"
 };
 
 const dropdown = {
@@ -267,106 +350,146 @@ const dropdown = {
   justifyContent: "space-between",
   alignItems: "center",
   padding: "14px",
-  borderRadius: "10px",
-  border: "1px solid #cbd5e1",
-  background: "#f8fafc",
-  cursor: "pointer"
+  borderRadius: "9px",
+  border: "1px solid #354242",
+  background: "#101515",
+  color: "#E8EEEE",
+  cursor: "pointer",
+  fontSize: "14px"
 };
 
 const arrow = {
   fontSize: "14px",
-  color: "#475569"
+  color: "#20DCC0"
 };
 
 const dropdownBox = {
-  marginTop: "6px",
-  border: "1px solid #cbd5e1",
-  borderRadius: "10px",
-  background: "#ffffff",
+  marginTop: "7px",
+  border: "1px solid #354242",
+  borderRadius: "9px",
+  background: "#181C1D",
   overflow: "hidden"
 };
 
 const search = {
   width: "100%",
-  padding: "12px",
+  boxSizing: "border-box",
+  padding: "13px",
+  background: "#101515",
+  color: "#E8EEEE",
   border: "none",
-  borderBottom: "1px solid #e5e7eb"
+  borderBottom: "1px solid #354242",
+  outline: "none",
+  fontSize: "13px"
 };
 
 const list = {
   listStyle: "none",
   margin: 0,
   padding: 0,
-  maxHeight: "200px",
+  maxHeight: "220px",
   overflowY: "auto"
 };
 
 const item = {
-  padding: "12px",
+  padding: "13px",
   cursor: "pointer",
-  borderBottom: "1px solid #f1f5f9"
+  borderBottom: "1px solid #293333",
+  color: "#E8EEEE",
+  fontSize: "13px"
 };
 
 const email = {
   fontSize: "12px",
-  color: "#64748b"
+  color: "#899497",
+  marginTop: "5px"
 };
 
 const empty = {
   padding: "14px",
-  color: "#94a3b8"
+  color: "#899497",
+  fontSize: "13px"
 };
 
 const medicineRow = {
   display: "grid",
-  gridTemplateColumns: "repeat(4, 1fr) auto",
+  gridTemplateColumns: "repeat(auto-fit, minmax(145px, 1fr))",
   gap: "12px",
-  marginBottom: "12px"
+  marginBottom: "13px",
+  padding: "15px",
+  background: "#101515",
+  border: "1px solid #293333",
+  borderRadius: "10px"
 };
 
 const input = {
+  width: "100%",
+  minWidth: 0,
+  boxSizing: "border-box",
   padding: "12px",
   borderRadius: "8px",
-  border: "1px solid #cbd5e1"
+  border: "1px solid #354242",
+  background: "#181C1D",
+  color: "#E8EEEE",
+  fontSize: "13px",
+  outline: "none"
 };
 
 const textarea = {
+  display: "block",
   width: "100%",
-  minHeight: "100px",
+  boxSizing: "border-box",
+  minHeight: "110px",
   padding: "14px",
-  borderRadius: "10px",
-  border: "1px solid #cbd5e1"
+  borderRadius: "9px",
+  border: "1px solid #354242",
+  background: "#101515",
+  color: "#E8EEEE",
+  fontSize: "13px",
+  fontFamily: "Arial, sans-serif",
+  lineHeight: 1.6,
+  resize: "vertical",
+  outline: "none"
 };
 
 const remove = {
-  background: "#fee2e2",
-  color: "#991b1b",
-  border: "none",
+  background: "#40252C",
+  color: "#FB7185",
+  border: "1px solid #814052",
   borderRadius: "8px",
   padding: "10px 14px",
-  cursor: "pointer"
+  cursor: "pointer",
+  fontWeight: "600"
 };
 
 const add = {
-  marginTop: "12px",
-  background: "#e0f2fe",
-  color: "#0369a1",
-  border: "none",
-  borderRadius: "10px",
-  padding: "12px 16px",
+  marginTop: "10px",
+  background: "#153A35",
+  color: "#20DCC0",
+  border: "1px solid #216B60",
+  borderRadius: "8px",
+  padding: "11px 16px",
   fontWeight: "600",
-  cursor: "pointer"
+  cursor: "pointer",
+  fontSize: "13px"
 };
 
 const submit = {
-  marginTop: "30px",
+  marginTop: "28px",
   width: "100%",
-  background: "#2563eb",
-  color: "#ffffff",
-  padding: "16px",
-  borderRadius: "12px",
+  background: "#20DCC0",
+  color: "#071A18",
+  padding: "15px",
+  borderRadius: "9px",
   border: "none",
-  fontSize: "16px",
+  fontSize: "15px",
   fontWeight: "700",
   cursor: "pointer"
+};
+
+const statusStyle = {
+  marginTop: "18px",
+  textAlign: "center",
+  fontSize: "13px",
+  fontWeight: "600"
 };

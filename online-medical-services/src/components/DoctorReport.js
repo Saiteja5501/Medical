@@ -1,13 +1,14 @@
+
 import React, { useState, useEffect, useCallback } from "react";
+import API from "../api";
 
 function DoctorReport() {
-  const doctorId = Number(sessionStorage.getItem("doctorId"));
-  const doctorName = sessionStorage.getItem("doctorName") || "";
-
   const [reports, setReports] = useState([]);
   const [patients, setPatients] = useState([]);
   const [status, setStatus] = useState("");
   const [pdfFile, setPdfFile] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [downloadingId, setDownloadingId] = useState(null);
 
   const [newReport, setNewReport] = useState({
     patientId: "",
@@ -16,72 +17,81 @@ function DoctorReport() {
   });
 
   /* ================= FETCH REPORTS ================= */
+
   const fetchReports = useCallback(async () => {
+    const doctorId = sessionStorage.getItem("doctorId");
+
     if (!doctorId) return;
 
     try {
-      const res = await fetch(
-        `http://localhost:5000/reports/doctor/${doctorId}`
-      );
+      const response = await API.get(`/reports/doctor/${doctorId}`);
 
-      const data = await res.json();
-      console.log("Doctor Reports API:", data);
-
-      if (Array.isArray(data)) {
-        setReports(data);
-      } else if (Array.isArray(data.reports)) {
-        setReports(data.reports);
-      } else if (data.success && Array.isArray(data.reports)) {
-        setReports(data.reports);
+      if (Array.isArray(response.data)) {
+        setReports(response.data);
       } else {
         setReports([]);
       }
     } catch (error) {
-      console.error("Doctor report fetch error:", error);
+      console.error("Doctor Reports Error:", error);
+
+      setStatus(
+        error.response?.data?.message || "Unable to load reports"
+      );
+
       setReports([]);
     }
-  }, [doctorId]);
+  }, []);
 
   /* ================= FETCH ACCEPTED PATIENTS ================= */
+
   const fetchAcceptedPatients = useCallback(async () => {
+    const doctorId = sessionStorage.getItem("doctorId");
+
     if (!doctorId) return;
 
     try {
-      const res = await fetch(
-        `http://localhost:5000/prescriptions/doctor/${doctorId}/accepted-patients`
+      const response = await API.get(
+        `/prescriptions/doctor/${doctorId}/accepted-patients`
       );
 
-      const data = await res.json();
-      console.log("Accepted Patients API:", data);
-
-      if (Array.isArray(data)) {
-        setPatients(data);
-      } else if (Array.isArray(data.patients)) {
-        setPatients(data.patients);
-      } else if (data.success && Array.isArray(data.patients)) {
-        setPatients(data.patients);
+      if (response.data.success) {
+        setPatients(response.data.patients || []);
       } else {
         setPatients([]);
       }
-
     } catch (error) {
-      console.error("Accepted patient fetch error:", error);
+      console.error("Accepted Patients Error:", error);
+
+      setStatus(
+        error.response?.data?.message ||
+        "Unable to load accepted patients"
+      );
+
       setPatients([]);
     }
-  }, [doctorId]);
+  }, []);
+
+  /* ================= INITIAL LOAD ================= */
 
   useEffect(() => {
     fetchReports();
     fetchAcceptedPatients();
   }, [fetchReports, fetchAcceptedPatients]);
 
+  /* ================= STATUS MESSAGE ================= */
+
   useEffect(() => {
     if (!status) return;
-    const t = setTimeout(() => setStatus(""), 8000);
-    return () => clearTimeout(t);
+
+    const timer = setTimeout(() => {
+      setStatus("");
+    }, 8000);
+
+    return () => clearTimeout(timer);
   }, [status]);
 
   /* ================= ADD REPORT ================= */
+
   const handleAddReport = async () => {
     setStatus("");
 
@@ -89,65 +99,399 @@ function DoctorReport() {
       (p) => p.id === Number(newReport.patientId)
     );
 
-    if (!selectedPatient)
-      return setStatus("Error: Please select a valid patient");
+    if (!selectedPatient) {
+      setStatus("Error: Please select a valid patient");
+      return;
+    }
 
-    try {
-      const formData = new FormData();
-      formData.append("doctorId", doctorId);
-      formData.append("doctorName", doctorName);
-      formData.append("patientId", selectedPatient.id);
-      formData.append("patientName", selectedPatient.name);
-      formData.append("reportTitle", newReport.reportTitle);
-      formData.append("description", newReport.description);
+    if (!newReport.reportTitle.trim()) {
+      setStatus("Error: Report title is required");
+      return;
+    }
 
-      if (pdfFile) formData.append("pdf", pdfFile);
+    if (!newReport.description.trim()) {
+      setStatus("Error: Description is required");
+      return;
+    }
 
-      const res = await fetch("http://localhost:5000/reports", {
-        method: "POST",
-        body: formData
-      });
+    if (newReport.reportTitle.trim().length > 255) {
+      setStatus("Error: Report title cannot exceed 255 characters");
+      return;
+    }
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        setStatus(data.error || "Error adding report");
+    if (pdfFile) {
+      if (
+        pdfFile.type !== "application/pdf" ||
+        !pdfFile.name.toLowerCase().endsWith(".pdf")
+      ) {
+        setStatus("Error: Only PDF files are allowed");
         return;
       }
 
-      setStatus("Report added successfully");
-      setNewReport({ patientId: "", reportTitle: "", description: "" });
-      setPdfFile(null);
-      fetchReports();
+      if (pdfFile.size > 5 * 1024 * 1024) {
+        setStatus("Error: PDF file must be smaller than 5 MB");
+        return;
+      }
+    }
 
-    } catch {
-      setStatus("Server error");
+    setLoading(true);
+
+    try {
+      const formData = new FormData();
+
+      formData.append("patientId", selectedPatient.id);
+      formData.append("reportTitle", newReport.reportTitle.trim());
+      formData.append("description", newReport.description.trim());
+
+      if (pdfFile) {
+        formData.append("pdf", pdfFile);
+      }
+
+      const response = await API.post("/reports", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data"
+        }
+      });
+
+      if (response.data.success) {
+        setStatus("Report added successfully!");
+
+        setNewReport({
+          patientId: "",
+          reportTitle: "",
+          description: ""
+        });
+
+        setPdfFile(null);
+
+        const fileInput = document.getElementById("doctor-report-pdf");
+
+        if (fileInput) {
+          fileInput.value = "";
+        }
+
+        await fetchReports();
+      } else {
+        setStatus(
+          response.data.message || "Error adding report"
+        );
+      }
+    } catch (error) {
+      console.error("Add Report Error:", error);
+
+      setStatus(
+        error.response?.data?.message || "Unable to add report"
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /* ================= SECURE PDF DOWNLOAD ================= */
+
+  const handleDownload = async (reportId) => {
+    setDownloadingId(reportId);
+    setStatus("");
+
+    try {
+      const response = await API.get(
+        `/reports/download/${reportId}`,
+        {
+          responseType: "blob"
+        }
+      );
+
+      const blob = new Blob(
+        [response.data],
+        { type: "application/pdf" }
+      );
+
+      const downloadUrl = window.URL.createObjectURL(blob);
+
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = `medical-report-${reportId}.pdf`;
+
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      window.URL.revokeObjectURL(downloadUrl);
+    } catch (error) {
+      console.error("PDF Download Error:", error);
+
+      setStatus("Unable to download PDF. Please try again.");
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
+  /* ================= STYLES ================= */
+
+  const styles = {
+    page: {
+      minHeight: "100vh",
+      padding: "35px 24px",
+      background: "#0B0D0E",
+      color: "#E8EEEE",
+      fontFamily: "Inter, system-ui, sans-serif"
+    },
+
+    container: {
+      maxWidth: "1200px",
+      margin: "0 auto"
+    },
+
+    header: {
+      marginBottom: "28px"
+    },
+
+    title: {
+      fontSize: "27px",
+      fontWeight: "700",
+      color: "#E8EEEE",
+      margin: "0 0 8px"
+    },
+
+    subtitle: {
+      fontSize: "14px",
+      color: "#899497",
+      margin: 0,
+      lineHeight: "1.6"
+    },
+
+    formBox: {
+      background: "#181C1D",
+      padding: "25px",
+      borderRadius: "16px",
+      marginBottom: "30px",
+      border: "1px solid #293333"
+    },
+
+    sectionTitle: {
+      fontSize: "17px",
+      fontWeight: "600",
+      color: "#E8EEEE",
+      margin: "0 0 20px"
+    },
+
+    formRow: {
+      display: "flex",
+      gap: "14px",
+      marginBottom: "16px",
+      alignItems: "center",
+      flexWrap: "wrap"
+    },
+
+    input: {
+      flex: "1 1 240px",
+      minWidth: 0,
+      boxSizing: "border-box",
+      padding: "13px 14px",
+      borderRadius: "9px",
+      border: "1px solid #303B3B",
+      background: "#101515",
+      color: "#E8EEEE",
+      fontSize: "14px",
+      outline: "none",
+      colorScheme: "dark"
+    },
+
+    textarea: {
+      width: "100%",
+      minHeight: "110px",
+      boxSizing: "border-box",
+      padding: "13px 14px",
+      borderRadius: "9px",
+      border: "1px solid #303B3B",
+      background: "#101515",
+      color: "#E8EEEE",
+      marginBottom: "16px",
+      fontSize: "14px",
+      outline: "none",
+      resize: "vertical",
+      fontFamily: "inherit"
+    },
+
+    fileInput: {
+      flex: "1 1 240px",
+      minWidth: 0,
+      padding: "10px",
+      border: "1px solid #303B3B",
+      borderRadius: "9px",
+      background: "#101515",
+      color: "#AAB5B5",
+      fontSize: "13px",
+      boxSizing: "border-box"
+    },
+
+    fileHint: {
+      fontSize: "12px",
+      color: "#899497",
+      margin: "-5px 0 16px"
+    },
+
+    primaryBtn: {
+      background: "#20DCC0",
+      color: "#071411",
+      border: "none",
+      padding: "13px 23px",
+      borderRadius: "9px",
+      fontWeight: "700",
+      fontSize: "14px",
+      cursor: loading ? "not-allowed" : "pointer",
+      opacity: loading ? 0.6 : 1,
+      whiteSpace: "nowrap"
+    },
+
+    tableSection: {
+      background: "#181C1D",
+      border: "1px solid #293333",
+      borderRadius: "16px",
+      padding: "23px",
+      overflow: "hidden"
+    },
+
+    tableWrapper: {
+      width: "100%",
+      overflowX: "auto",
+      borderRadius: "10px",
+      border: "1px solid #293333"
+    },
+
+    table: {
+      width: "100%",
+      minWidth: "800px",
+      borderCollapse: "collapse"
+    },
+
+    th: {
+      background: "#202727",
+      color: "#AAB5B5",
+      padding: "15px",
+      textAlign: "left",
+      fontSize: "12px",
+      fontWeight: "700",
+      letterSpacing: "0.4px",
+      whiteSpace: "nowrap",
+      borderBottom: "1px solid #303B3B"
+    },
+
+    td: {
+      padding: "15px",
+      fontSize: "13px",
+      color: "#D5DEDE",
+      borderBottom: "1px solid #293333",
+      lineHeight: "1.6",
+      verticalAlign: "top"
+    },
+
+    tdStrong: {
+      padding: "15px",
+      fontSize: "13px",
+      color: "#E8EEEE",
+      fontWeight: "600",
+      borderBottom: "1px solid #293333",
+      verticalAlign: "top"
+    },
+
+    tdMuted: {
+      padding: "15px",
+      fontSize: "13px",
+      color: "#899497",
+      borderBottom: "1px solid #293333",
+      lineHeight: "1.6",
+      maxWidth: "300px",
+      verticalAlign: "top"
+    },
+
+    downloadBtn: {
+      color: "#20DCC0",
+      background: "#203A34",
+      border: "1px solid #31554C",
+      padding: "8px 13px",
+      borderRadius: "7px",
+      fontSize: "12px",
+      fontWeight: "600",
+      cursor: "pointer",
+      whiteSpace: "nowrap"
+    },
+
+    emptyText: {
+      textAlign: "center",
+      padding: "35px",
+      color: "#899497",
+      fontSize: "14px"
+    },
+
+    successText: {
+      background: "#142B23",
+      color: "#64DDA6",
+      padding: "13px 15px",
+      borderRadius: "9px",
+      border: "1px solid #28533F",
+      marginBottom: "20px",
+      fontSize: "13px",
+      fontWeight: "600"
+    },
+
+    errorText: {
+      background: "#301C1C",
+      color: "#FF8585",
+      padding: "13px 15px",
+      borderRadius: "9px",
+      border: "1px solid #633333",
+      marginBottom: "20px",
+      fontSize: "13px",
+      fontWeight: "600"
     }
   };
 
   return (
-    <div style={page}>
-      <div style={card}>
-        <h1 style={title}>Doctor Reports</h1>
-        <p style={subtitle}>Create and review patient medical reports</p>
+    <div style={styles.page}>
+      <div style={styles.container}>
+
+        {/* HEADER */}
+
+        <div style={styles.header}>
+          <h1 style={styles.title}>Doctor Reports</h1>
+
+          <p style={styles.subtitle}>
+            Create, manage and review medical reports for your patients.
+          </p>
+        </div>
+
+        {/* STATUS MESSAGE */}
 
         {status && (
-          <div style={status.includes("Error") ? errorText : successText}>
+          <div
+            style={
+              status.includes("Error") ||
+              status.includes("Unable") ||
+              status.includes("required")
+                ? styles.errorText
+                : styles.successText
+            }
+          >
             {status}
           </div>
         )}
 
         {/* ADD REPORT */}
-        <div style={formBox}>
-          <h3 style={sectionTitle}>Add New Report</h3>
 
-          <div style={formRow}>
+        <div style={styles.formBox}>
+          <h3 style={styles.sectionTitle}>Add New Report</h3>
+
+          <div style={styles.formRow}>
             <select
               value={newReport.patientId}
               onChange={(e) =>
-                setNewReport({ ...newReport, patientId: e.target.value })
+                setNewReport({
+                  ...newReport,
+                  patientId: e.target.value
+                })
               }
-              style={input}
+              style={styles.input}
             >
               <option value="">Select Accepted Patient</option>
 
@@ -161,240 +505,132 @@ function DoctorReport() {
             <input
               type="text"
               placeholder="Report Title"
+              maxLength={255}
               value={newReport.reportTitle}
               onChange={(e) =>
-                setNewReport({ ...newReport, reportTitle: e.target.value })
+                setNewReport({
+                  ...newReport,
+                  reportTitle: e.target.value
+                })
               }
-              style={input}
+              style={styles.input}
             />
           </div>
 
           <textarea
-            placeholder="Report Description"
+            placeholder="Enter report description..."
             value={newReport.description}
             onChange={(e) =>
-              setNewReport({ ...newReport, description: e.target.value })
+              setNewReport({
+                ...newReport,
+                description: e.target.value
+              })
             }
-            style={textarea}
+            style={styles.textarea}
           />
 
-          <div style={formRow}>
+          <div style={styles.formRow}>
             <input
+              id="doctor-report-pdf"
               type="file"
-              accept="application/pdf"
-              onChange={(e) => setPdfFile(e.target.files[0])}
+              accept=".pdf,application/pdf"
+              onChange={(e) =>
+                setPdfFile(e.target.files?.[0] || null)
+              }
+              style={styles.fileInput}
             />
-            <button style={primaryBtn} onClick={handleAddReport}>
-              Add Report
+
+            <button
+              type="button"
+              style={styles.primaryBtn}
+              onClick={handleAddReport}
+              disabled={loading}
+            >
+              {loading ? "Uploading..." : "Add Report"}
             </button>
           </div>
+
+          <p style={styles.fileHint}>
+            PDF attachment is optional. Maximum file size: 5 MB.
+          </p>
         </div>
 
         {/* REPORTS TABLE */}
-        <div style={tableWrapper}>
-          <table style={table}>
-            <thead>
-              <tr>
-                <th style={th}>Patient</th>
-                <th style={th}>Title</th>
-                <th style={th}>Description</th>
-                <th style={th}>Date</th>
-                <th style={th}>PDF</th>
-              </tr>
-            </thead>
-            <tbody>
-              {reports.length === 0 ? (
+
+        <div style={styles.tableSection}>
+          <h3 style={styles.sectionTitle}>Patient Reports</h3>
+
+          <div style={styles.tableWrapper}>
+            <table style={styles.table}>
+              <thead>
                 <tr>
-                  <td colSpan="5" style={emptyText}>
-                    No reports found
-                  </td>
+                  <th style={styles.th}>PATIENT</th>
+                  <th style={styles.th}>REPORT TITLE</th>
+                  <th style={styles.th}>DESCRIPTION</th>
+                  <th style={styles.th}>DATE</th>
+                  <th style={styles.th}>PDF</th>
                 </tr>
-              ) : (
-                reports.map((r) => (
-                  <tr key={r.id} style={row}>
-                    {/* ✅ FIXED HERE */}
-                    <td style={tdStrong}>{r.patient_name}</td>
-                    <td style={td}>{r.reportTitle}</td>
-                    <td style={tdMuted}>{r.description}</td>
-                    <td style={td}>
-                      {r.date ? new Date(r.date).toLocaleString() : "—"}
-                    </td>
-                    <td style={td}>
-                      {r.pdf_path ? (
-                        <a
-                          href={`http://localhost:5000${r.pdf_path}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={link}
-                        >
-                          Download
-                        </a>
-                      ) : (
-                        "—"
-                      )}
+              </thead>
+
+              <tbody>
+                {reports.length === 0 ? (
+                  <tr>
+                    <td colSpan="5" style={styles.emptyText}>
+                      No reports found
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  reports.map((r) => (
+                    <tr key={r.id}>
+                      <td style={styles.tdStrong}>
+                        {r.patient_name}
+                      </td>
+
+                      <td style={styles.td}>
+                        {r.reportTitle}
+                      </td>
+
+                      <td style={styles.tdMuted}>
+                        {r.description}
+                      </td>
+
+                      <td style={styles.td}>
+                        {r.date
+                          ? new Date(r.date).toLocaleString("en-IN")
+                          : "—"}
+                      </td>
+
+                      <td style={styles.td}>
+                        {r.has_pdf ? (
+                          <button
+                            type="button"
+                            style={{
+                              ...styles.downloadBtn,
+                              opacity:
+                                downloadingId === r.id ? 0.6 : 1
+                            }}
+                            disabled={downloadingId === r.id}
+                            onClick={() => handleDownload(r.id)}
+                          >
+                            {downloadingId === r.id
+                              ? "Downloading..."
+                              : "↓ Download"}
+                          </button>
+                        ) : (
+                          <span style={{ color: "#899497" }}>—</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
+
       </div>
     </div>
   );
 }
 
 export default DoctorReport;
-
-/* ================= STYLES (UNCHANGED) ================= */
-
-const page = {
-  minHeight: "100vh",
-  padding: "40px",
-  background: "linear-gradient(180deg, #f8fafc, #e2e8f0)",
-  fontFamily: "Inter, system-ui, sans-serif"
-};
-
-const card = {
-  maxWidth: "1200px",
-  margin: "auto",
-  background: "#ffffff",
-  padding: "32px",
-  borderRadius: "18px",
-  boxShadow: "0 15px 35px rgba(0,0,0,0.08)"
-};
-
-const title = {
-  textAlign: "center",
-  fontSize: "30px",
-  fontWeight: "700",
-  color: "#0f172a",
-  marginBottom: "6px"
-};
-
-const subtitle = {
-  textAlign: "center",
-  color: "#64748b",
-  marginBottom: "30px"
-};
-
-const formBox = {
-  background: "#f8f9fc",
-  padding: "22px",
-  borderRadius: "14px",
-  marginBottom: "35px",
-  border: "1px solid #e5e7eb"
-};
-
-const sectionTitle = {
-  marginBottom: "14px",
-  color: "#1e293b",
-  fontWeight: "600"
-};
-
-const formRow = {
-  display: "flex",
-  gap: "12px",
-  marginBottom: "14px",
-  alignItems: "center"
-};
-
-const input = {
-  flex: 1,
-  padding: "12px",
-  borderRadius: "8px",
-  border: "1px solid #cbd5e1",
-  fontSize: "14px"
-};
-
-const textarea = {
-  width: "100%",
-  minHeight: "90px",
-  padding: "12px",
-  borderRadius: "8px",
-  border: "1px solid #cbd5e1",
-  marginBottom: "14px",
-  fontSize: "14px"
-};
-
-const primaryBtn = {
-  background: "#2563eb",
-  color: "#fff",
-  border: "none",
-  padding: "12px 20px",
-  borderRadius: "8px",
-  fontWeight: "600",
-  cursor: "pointer"
-};
-
-const tableWrapper = {
-  borderRadius: "14px",
-  overflow: "hidden",
-  border: "1px solid #e5e7eb"
-};
-
-const table = {
-  width: "100%",
-  borderCollapse: "collapse"
-};
-
-const th = {
-  background: "#2563eb",
-  color: "#fff",
-  padding: "14px",
-  textAlign: "left",
-  fontSize: "14px",
-  fontWeight: "600"
-};
-
-const row = {
-  borderBottom: "1px solid #e5e7eb"
-};
-
-const td = {
-  padding: "14px",
-  fontSize: "14px",
-  color: "#0f172a"
-};
-
-const tdStrong = {
-  ...td,
-  fontWeight: "600"
-};
-
-const tdMuted = {
-  ...td,
-  color: "#475569"
-};
-
-const link = {
-  color: "#2563eb",
-  fontWeight: "600",
-  textDecoration: "none"
-};
-
-const emptyText = {
-  textAlign: "center",
-  padding: "30px",
-  color: "#94a3b8"
-};
-
-const successText = {
-  background: "#dcfce7",
-  color: "#166534",
-  padding: "10px",
-  borderRadius: "8px",
-  textAlign: "center",
-  marginBottom: "16px",
-  fontWeight: "600"
-};
-
-const errorText = {
-  background: "#fee2e2",
-  color: "#991b1b",
-  padding: "10px",
-  borderRadius: "8px",
-  textAlign: "center",
-  marginBottom: "16px",
-  fontWeight: "600"
-};

@@ -1,101 +1,175 @@
+
 import React from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 function PatientNavbar({ onLogout }) {
+  const name = sessionStorage.getItem("userName") || "Patient";
   const navigate = useNavigate();
-
-  // ✅ Universal storage
-  const name = sessionStorage.getItem("userName");
 
   const handleLogout = () => {
     onLogout();
-    sessionStorage.clear();
-    navigate("/login");
+  };
+
+  const handleProfileClick = () => {
+    navigate("/patient/profile");
   };
 
   return (
-    <nav style={navStyle}>
-      <div style={logoStyle}>
-        🧑‍⚕️ Welcome, {name || "Patient"}
+    <nav style={styles.navbar}>
+      <div style={styles.left}>
+        <span style={styles.brandIcon}>✚</span>
+
+        <span style={styles.brand}>
+          health<span style={styles.brandAccent}>wave</span>
+        </span>
+
+        <span style={styles.portalLabel}>PATIENT PORTAL</span>
       </div>
 
-      <ul style={menuStyle}>
-        <li>
-          <Link to="/patient-dashboard" style={linkStyle}>
-            Dashboard
-          </Link>
-        </li>
-        <li>
-          <Link to="/patient/appointments" style={linkStyle}>
-            Appointments
-          </Link>
-        </li>
-        <li>
-          <Link to="/patient/medical-history" style={linkStyle}>
-            History
-          </Link>
-        </li>
-        <li>
-          <Link to="/patient/prescriptions" style={linkStyle}>
-            Prescriptions
-          </Link>
-        </li>
-        <li>
-          <Link to="/patient/reports" style={linkStyle}>
-            Reports
-          </Link>
-        </li>
-        <li>
-          <button onClick={handleLogout} style={logoutBtn}>
-            Logout
-          </button>
-        </li>
-      </ul>
+      <div style={styles.right}>
+        <button
+          type="button"
+          onClick={handleProfileClick}
+          style={styles.profile}
+          title="View Profile"
+          aria-label="Open patient profile"
+        >
+          <div style={styles.avatar}>
+            {name.charAt(0).toUpperCase()}
+          </div>
+
+          <div style={styles.profileDetails}>
+            <div style={styles.name}>{name}</div>
+            <div style={styles.role}>PATIENT</div>
+          </div>
+        </button>
+
+        <button
+          type="button"
+          onClick={handleLogout}
+          style={styles.logoutButton}
+        >
+          ↪ Logout
+        </button>
+      </div>
     </nav>
   );
 }
 
-/* ================= STYLES (UNCHANGED) ================= */
+const styles = {
+  navbar: {
+    width: "100%",
+    minHeight: "68px",
+    padding: "0 28px",
+    boxSizing: "border-box",
+    background: "#0D1011",
+    borderBottom: "1px solid #24292B",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    position: "relative",
+    zIndex: 1000,
+  },
 
-const navStyle = {
-  background: "linear-gradient(90deg, #2e7d32, #66bb6a)",
-  padding: "14px 40px",
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  boxShadow: "0 4px 14px rgba(0,0,0,0.18)"
-};
+  left: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+  },
 
-const logoStyle = {
-  color: "#fff",
-  fontSize: "20px",
-  fontWeight: "700"
-};
+  brandIcon: {
+    width: "35px",
+    height: "35px",
+    borderRadius: "9px",
+    background: "#20DCC0",
+    color: "#07110F",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "25px",
+    fontWeight: "bold",
+  },
 
-const menuStyle = {
-  listStyle: "none",
-  display: "flex",
-  gap: "22px",
-  margin: 0,
-  padding: 0,
-  alignItems: "center"
-};
+  brand: {
+    fontSize: "20px",
+    fontWeight: "800",
+    color: "#FFFFFF",
+    letterSpacing: "-0.5px",
+  },
 
-const linkStyle = {
-  color: "#f1f8e9",
-  textDecoration: "none",
-  fontSize: "15px",
-  fontWeight: "500"
-};
+  brandAccent: {
+    color: "#20DCC0",
+  },
 
-const logoutBtn = {
-  backgroundColor: "#ffffff",
-  color: "#2e7d32",
-  border: "none",
-  padding: "8px 18px",
-  borderRadius: "20px",
-  cursor: "pointer",
-  fontWeight: "600"
+  portalLabel: {
+    marginLeft: "12px",
+    paddingLeft: "18px",
+    borderLeft: "1px solid #303638",
+    color: "#899497",
+    fontSize: "11px",
+    fontWeight: "700",
+    letterSpacing: "1.5px",
+  },
+
+  right: {
+    display: "flex",
+    alignItems: "center",
+    gap: "24px",
+  },
+
+  profile: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    padding: "0",
+    border: "none",
+    background: "transparent",
+    cursor: "pointer",
+    color: "#FFFFFF",
+    textAlign: "left",
+  },
+
+  avatar: {
+    width: "39px",
+    height: "39px",
+    borderRadius: "10px",
+    background: "#1D3934",
+    color: "#20DCC0",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "16px",
+    fontWeight: "700",
+  },
+
+  profileDetails: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px",
+  },
+
+  name: {
+    color: "#FFFFFF",
+    fontSize: "13px",
+    fontWeight: "600",
+  },
+
+  role: {
+    color: "#899497",
+    fontSize: "9px",
+    letterSpacing: "1.2px",
+  },
+
+  logoutButton: {
+    padding: "11px 17px",
+    borderRadius: "8px",
+    border: "1px solid #303638",
+    background: "#1B2021",
+    color: "#C3CDCF",
+    fontSize: "12px",
+    fontWeight: "600",
+    cursor: "pointer",
+  },
 };
 
 export default PatientNavbar;

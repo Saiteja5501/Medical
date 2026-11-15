@@ -1,11 +1,13 @@
-import React, { useState, useEffect } from "react";
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import React, { useEffect } from "react";
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from "react-router-dom";
 
+// Navbars
 import GuestNavbar from "./components/GuestNavbar";
 import PatientNavbar from "./components/PatientNavbar";
 import DoctorNavbar from "./components/DoctorNavbar";
 import AdminNavbar from "./components/AdminNavbar";
 
+// Pages / Components
 import Home from "./components/Home";
 import About from "./components/About";
 import Services from "./components/Services";
@@ -18,8 +20,11 @@ import MedicalHistory from "./components/MedicalHistory";
 import Prescriptions from "./components/Prescriptions";
 import PatientReports from "./components/PatientReport";
 import PatientDashboard from "./components/PatientDashboard";
+import PatientProfile from "./components/PatientProfile";
+import FindDoctors from "./components/FindDoctors";
 
 import DoctorDashboard from "./components/DoctorDashboard";
+import DoctorProfile from "./components/DoctorProfile";
 import DoctorAppointments from "./components/DoctorAppointments";
 import DoctorPrescriptions from "./components/DoctorPrescriptions";
 import DoctorReports from "./components/DoctorReport";
@@ -33,87 +38,108 @@ import ManageDoctors from "./components/ManageDoctors";
 import Reports from "./components/Reports";
 import AdminAddDoctor from "./components/AdminAddDoctor";
 
-/* ✅ ADMIN IMPORTS */
 import UsersList from "./components/UsersList";
 import AdminAppointments from "./components/AdminAppointments";
 
-/* ✅ VIDEO CALL (FROM COMPONENTS) */
 import VideoCall from "./components/VideoCall";
 
-function App() {
-  const [role, setRole] = useState("guest");
-  const [authReady, setAuthReady] = useState(false);
+import { AuthProvider, useAuth } from "./context/AuthContext";
 
-  /* ================= RESTORE SESSION ================= */
-  useEffect(() => {
-    const isLoggedIn = sessionStorage.getItem("isLoggedIn");
-    const storedRole = sessionStorage.getItem("role");
+const dashboardPath = {
+  patient: "/patient-dashboard",
+  doctor: "/doctor-dashboard",
+  admin: "/admin-dashboard"
+};
 
-    if (isLoggedIn === "true" && storedRole) {
-      setRole(storedRole);
-    } else {
-      setRole("guest");
-    }
+function ProtectedRoute({ children, allowedRoles }) {
+  const { isLoggedIn, role } = useAuth();
+  if (!isLoggedIn || !allowedRoles.includes(role)) {
+    return <Navigate to="/login" replace />;
+  }
+  return children;
+}
 
-    setAuthReady(true);
-  }, []);
+function AppContent() {
+  const { isLoggedIn, role, patientId, clearAuth } = useAuth();
+  const navigate = useNavigate();
 
-  /* ================= LOGOUT ================= */
   const handleLogout = () => {
-    sessionStorage.clear();
-    setRole("guest");
-    window.location.href = "/login";
+    clearAuth();
+    navigate("/login");
   };
 
-  /* ================= NAVBAR ================= */
   const renderNavbar = () => {
-    if (!authReady) return null;
-
-    if (role === "doctor") return <DoctorNavbar onLogout={handleLogout} />;
+    if (!isLoggedIn) return <GuestNavbar />;
     if (role === "patient") return <PatientNavbar onLogout={handleLogout} />;
+    if (role === "doctor") return <DoctorNavbar onLogout={handleLogout} />;
     if (role === "admin") return <AdminNavbar onLogout={handleLogout} />;
-
     return <GuestNavbar />;
   };
 
-  /* ================= PROTECTED ROUTE ================= */
-  const ProtectedRoute = ({ children, allowedRoles }) => {
-    const isLoggedIn = sessionStorage.getItem("isLoggedIn");
-    const storedRole = sessionStorage.getItem("role");
-
-    return isLoggedIn === "true" && allowedRoles.includes(storedRole)
-      ? children
-      : <Navigate to="/login" replace />;
+  const getGuestPageElement = (Component) => {
+    if (isLoggedIn && dashboardPath[role]) {
+      return <Navigate to={dashboardPath[role]} replace />;
+    }
+    return <Component />;
   };
 
-  if (!authReady) return null;
+  const isSidebarRole = role === "admin";
 
   return (
-    <Router>
+    <>
+      <style>{`
+        * { box-sizing: border-box; }
+        html, body, #root { min-height: 100%; width: 100%; margin: 0; }
+        body { margin: 0; background: #0B0D0E; overflow-x: hidden; }
+        .role-sidebar-main { margin-left: 238px; width: calc(100% - 238px); min-height: 100vh; min-width: 0; background: #0B0D0E; }
+        .app-main { width: 100%; min-height: 100vh; background: #0B0D0E; }
+        @media (max-width: 700px) { .role-sidebar-main { margin-left: 205px; width: calc(100% - 205px); } }
+      `}</style>
       {renderNavbar()}
-
-      <div style={{ padding: "20px", maxWidth: "1200px", margin: "0 auto" }}>
+      <main className={isSidebarRole ? "role-sidebar-main" : "app-main"}>
         <Routes>
-
-          {/* ===== HOME ===== */}
+          {/* Home / default route */}
           <Route
             path="/"
             element={
-              role === "doctor" ? <Navigate to="/doctor-dashboard" /> :
-              role === "patient" ? <Navigate to="/patient-dashboard" /> :
-              role === "admin" ? <Navigate to="/admin-dashboard" /> :
-              <Home />
+              role === "doctor" ? (
+                <Navigate to="/doctor-dashboard" replace />
+              ) : role === "patient" ? (
+                <Navigate to="/patient-dashboard" replace />
+              ) : role === "admin" ? (
+                <Navigate to="/admin-dashboard" replace />
+              ) : (
+                <Home />
+              )
             }
           />
 
-          <Route path="/about" element={<About />} />
-          <Route path="/services" element={<Services />} />
-          <Route path="/doctors" element={<Doctors />} />
+          {/* Guest pages */}
+          <Route path="/about" element={getGuestPageElement(About)} />
+          <Route path="/services" element={getGuestPageElement(Services)} />
+          <Route path="/doctors" element={getGuestPageElement(Doctors)} />
+          <Route
+            path="/login"
+            element={
+              isLoggedIn && dashboardPath[role] ? (
+                <Navigate to={dashboardPath[role]} replace />
+              ) : (
+                <Login />
+              )
+            }
+          />
+          <Route
+            path="/register"
+            element={
+              isLoggedIn && dashboardPath[role] ? (
+                <Navigate to={dashboardPath[role]} replace />
+              ) : (
+                <Register />
+              )
+            }
+          />
 
-          <Route path="/login" element={<Login setRole={setRole} />} />
-          <Route path="/register" element={<Register />} />
-
-          {/* ===== PATIENT ===== */}
+          {/* Patient routes */}
           <Route
             path="/patient-dashboard"
             element={
@@ -122,16 +148,22 @@ function App() {
               </ProtectedRoute>
             }
           />
-
+          <Route
+            path="/patient/doctors"
+            element={
+              <ProtectedRoute allowedRoles={["patient"]}>
+                <FindDoctors />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/patient/appointments"
             element={
               <ProtectedRoute allowedRoles={["patient"]}>
-                <Appointments patientId={sessionStorage.getItem("patientId")} />
+                <Appointments patientId={patientId} />
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/patient/medical-history"
             element={
@@ -140,7 +172,6 @@ function App() {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/patient/prescriptions"
             element={
@@ -149,7 +180,6 @@ function App() {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/patient/reports"
             element={
@@ -158,7 +188,14 @@ function App() {
               </ProtectedRoute>
             }
           />
-
+          <Route
+            path="/patient/profile"
+            element={
+              <ProtectedRoute allowedRoles={["patient"]}>
+                <PatientProfile />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/patient/available-slots/:doctorId"
             element={
@@ -168,7 +205,7 @@ function App() {
             }
           />
 
-          {/* ===== DOCTOR ===== */}
+          {/* Doctor routes */}
           <Route
             path="/doctor-dashboard"
             element={
@@ -177,7 +214,14 @@ function App() {
               </ProtectedRoute>
             }
           />
-
+          <Route
+            path="/doctor/profile"
+            element={
+              <ProtectedRoute allowedRoles={["doctor"]}>
+                <DoctorProfile />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/doctor/appointments"
             element={
@@ -186,7 +230,6 @@ function App() {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/doctor/prescriptions"
             element={
@@ -195,7 +238,6 @@ function App() {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/doctor/reports"
             element={
@@ -204,7 +246,6 @@ function App() {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/doctor/availability"
             element={
@@ -214,7 +255,7 @@ function App() {
             }
           />
 
-          {/* ===== VIDEO CALL (DOCTOR + PATIENT) ===== */}
+          {/* Video Call */}
           <Route
             path="/video-call/:roomId"
             element={
@@ -224,7 +265,7 @@ function App() {
             }
           />
 
-          {/* ===== ADMIN ===== */}
+          {/* Admin routes */}
           <Route
             path="/admin-dashboard"
             element={
@@ -233,7 +274,6 @@ function App() {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/manage-users"
             element={
@@ -242,7 +282,6 @@ function App() {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/manage-doctors"
             element={
@@ -251,7 +290,6 @@ function App() {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/admin/add-doctor"
             element={
@@ -260,7 +298,6 @@ function App() {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/admin/appointments"
             element={
@@ -269,7 +306,6 @@ function App() {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/admin/users-list"
             element={
@@ -278,7 +314,6 @@ function App() {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/reports"
             element={
@@ -287,10 +322,19 @@ function App() {
               </ProtectedRoute>
             }
           />
-
         </Routes>
-      </div>
-    </Router>
+      </main>
+    </>
+  );
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <Router>
+        <AppContent />
+      </Router>
+    </AuthProvider>
   );
 }
 
