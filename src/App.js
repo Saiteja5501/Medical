@@ -1,17 +1,13 @@
+import React, { useEffect } from "react";
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from "react-router-dom";
 
-import React, { useState, useEffect } from "react";
-import {
-  BrowserRouter as Router,
-  Routes,
-  Route,
-  Navigate
-} from "react-router-dom";
-
+// Navbars
 import GuestNavbar from "./components/GuestNavbar";
 import PatientNavbar from "./components/PatientNavbar";
 import DoctorNavbar from "./components/DoctorNavbar";
 import AdminNavbar from "./components/AdminNavbar";
 
+// Pages / Components
 import Home from "./components/Home";
 import About from "./components/About";
 import Services from "./components/Services";
@@ -47,6 +43,8 @@ import AdminAppointments from "./components/AdminAppointments";
 
 import VideoCall from "./components/VideoCall";
 
+import { AuthProvider, useAuth } from "./context/AuthContext";
+
 const dashboardPath = {
   patient: "/patient-dashboard",
   doctor: "/doctor-dashboard",
@@ -54,124 +52,61 @@ const dashboardPath = {
 };
 
 function ProtectedRoute({ children, allowedRoles }) {
-  const isLoggedIn =
-    sessionStorage.getItem("isLoggedIn") === "true";
-
-  const storedRole = sessionStorage.getItem("role");
-
-  if (!isLoggedIn || !allowedRoles.includes(storedRole)) {
+  const { isLoggedIn, role } = useAuth();
+  if (!isLoggedIn || !allowedRoles.includes(role)) {
     return <Navigate to="/login" replace />;
   }
-
   return children;
 }
 
-function AppContent({ role, setRole, authReady, handleLogout }) {
-  const isLoggedIn =
-    sessionStorage.getItem("isLoggedIn") === "true";
+function AppContent() {
+  const { isLoggedIn, role, patientId, clearAuth } = useAuth();
+  const navigate = useNavigate();
 
-  const storedRole = sessionStorage.getItem("role");
-
-  // Use the authenticated session role as the source of truth.
-  const activeRole = isLoggedIn ? storedRole : role;
+  const handleLogout = () => {
+    clearAuth();
+    navigate("/login");
+  };
 
   const renderNavbar = () => {
-    if (!authReady) return null;
-
-    if (activeRole === "patient") {
-      return <PatientNavbar onLogout={handleLogout} />;
-    }
-
-    if (activeRole === "doctor") {
-      return <DoctorNavbar onLogout={handleLogout} />;
-    }
-
-    if (activeRole === "admin") {
-      return <AdminNavbar onLogout={handleLogout} />;
-    }
-
+    if (!isLoggedIn) return <GuestNavbar />;
+    if (role === "patient") return <PatientNavbar onLogout={handleLogout} />;
+    if (role === "doctor") return <DoctorNavbar onLogout={handleLogout} />;
+    if (role === "admin") return <AdminNavbar onLogout={handleLogout} />;
     return <GuestNavbar />;
   };
 
-  if (!authReady) return null;
-
-  const isSidebarRole = activeRole === "admin";
-
   const getGuestPageElement = (Component) => {
-    if (isLoggedIn && dashboardPath[storedRole]) {
-      return (
-        <Navigate
-          to={dashboardPath[storedRole]}
-          replace
-        />
-      );
+    if (isLoggedIn && dashboardPath[role]) {
+      return <Navigate to={dashboardPath[role]} replace />;
     }
-
     return <Component />;
   };
+
+  const isSidebarRole = role === "admin";
 
   return (
     <>
       <style>{`
-        * {
-          box-sizing: border-box;
-        }
-
-        html,
-        body,
-        #root {
-          min-height: 100%;
-          width: 100%;
-          margin: 0;
-        }
-
-        body {
-          margin: 0;
-          background: #0B0D0E;
-          overflow-x: hidden;
-        }
-
-        .role-sidebar-main {
-          margin-left: 238px;
-          width: calc(100% - 238px);
-          min-height: 100vh;
-          min-width: 0;
-          background: #0B0D0E;
-          box-sizing: border-box;
-        }
-
-        .app-main {
-          width: 100%;
-          min-height: 100vh;
-          background: #0B0D0E;
-        }
-
-        @media (max-width: 700px) {
-          .role-sidebar-main {
-            margin-left: 205px;
-            width: calc(100% - 205px);
-          }
-        }
+        * { box-sizing: border-box; }
+        html, body, #root { min-height: 100%; width: 100%; margin: 0; }
+        body { margin: 0; background: #0B0D0E; overflow-x: hidden; }
+        .role-sidebar-main { margin-left: 238px; width: calc(100% - 238px); min-height: 100vh; min-width: 0; background: #0B0D0E; }
+        .app-main { width: 100%; min-height: 100vh; background: #0B0D0E; }
+        @media (max-width: 700px) { .role-sidebar-main { margin-left: 205px; width: calc(100% - 205px); } }
       `}</style>
-
-      {/* GLOBAL ROLE-BASED NAVBAR */}
       {renderNavbar()}
-
-      {/* PAGE CONTENT */}
-      <main
-        className={
-          isSidebarRole ? "role-sidebar-main" : "app-main"
-        }
-      >
+      <main className={isSidebarRole ? "role-sidebar-main" : "app-main"}>
         <Routes>
+          {/* Home / default route */}
           <Route
             path="/"
             element={
-              activeRole === "doctor" ? (
+              role === "doctor" ? (
                 <Navigate to="/doctor-dashboard" replace />
-              ) : activeRole === "patient" ? (
+              ) : role === "patient" ? (
                 <Navigate to="/patient-dashboard" replace />
-              ) : activeRole === "admin" ? (
+              ) : role === "admin" ? (
                 <Navigate to="/admin-dashboard" replace />
               ) : (
                 <Home />
@@ -179,51 +114,32 @@ function AppContent({ role, setRole, authReady, handleLogout }) {
             }
           />
 
-          <Route
-            path="/about"
-            element={getGuestPageElement(About)}
-          />
-
-          <Route
-            path="/services"
-            element={getGuestPageElement(Services)}
-          />
-
-          <Route
-            path="/doctors"
-            element={getGuestPageElement(Doctors)}
-          />
-
+          {/* Guest pages */}
+          <Route path="/about" element={getGuestPageElement(About)} />
+          <Route path="/services" element={getGuestPageElement(Services)} />
+          <Route path="/doctors" element={getGuestPageElement(Doctors)} />
           <Route
             path="/login"
             element={
-              isLoggedIn && dashboardPath[storedRole] ? (
-                <Navigate
-                  to={dashboardPath[storedRole]}
-                  replace
-                />
+              isLoggedIn && dashboardPath[role] ? (
+                <Navigate to={dashboardPath[role]} replace />
               ) : (
-                <Login setRole={setRole} />
+                <Login />
               )
             }
           />
-
           <Route
             path="/register"
             element={
-              isLoggedIn && dashboardPath[storedRole] ? (
-                <Navigate
-                  to={dashboardPath[storedRole]}
-                  replace
-                />
+              isLoggedIn && dashboardPath[role] ? (
+                <Navigate to={dashboardPath[role]} replace />
               ) : (
                 <Register />
               )
             }
           />
 
-          {/* PATIENT ROUTES */}
-
+          {/* Patient routes */}
           <Route
             path="/patient-dashboard"
             element={
@@ -232,7 +148,6 @@ function AppContent({ role, setRole, authReady, handleLogout }) {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/patient/doctors"
             element={
@@ -241,18 +156,14 @@ function AppContent({ role, setRole, authReady, handleLogout }) {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/patient/appointments"
             element={
               <ProtectedRoute allowedRoles={["patient"]}>
-                <Appointments
-                  patientId={sessionStorage.getItem("patientId")}
-                />
+                <Appointments patientId={patientId} />
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/patient/medical-history"
             element={
@@ -261,7 +172,6 @@ function AppContent({ role, setRole, authReady, handleLogout }) {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/patient/prescriptions"
             element={
@@ -270,7 +180,6 @@ function AppContent({ role, setRole, authReady, handleLogout }) {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/patient/reports"
             element={
@@ -279,7 +188,6 @@ function AppContent({ role, setRole, authReady, handleLogout }) {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/patient/profile"
             element={
@@ -288,7 +196,6 @@ function AppContent({ role, setRole, authReady, handleLogout }) {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/patient/available-slots/:doctorId"
             element={
@@ -298,8 +205,7 @@ function AppContent({ role, setRole, authReady, handleLogout }) {
             }
           />
 
-          {/* DOCTOR ROUTES */}
-
+          {/* Doctor routes */}
           <Route
             path="/doctor-dashboard"
             element={
@@ -308,7 +214,6 @@ function AppContent({ role, setRole, authReady, handleLogout }) {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/doctor/profile"
             element={
@@ -317,7 +222,6 @@ function AppContent({ role, setRole, authReady, handleLogout }) {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/doctor/appointments"
             element={
@@ -326,7 +230,6 @@ function AppContent({ role, setRole, authReady, handleLogout }) {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/doctor/prescriptions"
             element={
@@ -335,7 +238,6 @@ function AppContent({ role, setRole, authReady, handleLogout }) {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/doctor/reports"
             element={
@@ -344,7 +246,6 @@ function AppContent({ role, setRole, authReady, handleLogout }) {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/doctor/availability"
             element={
@@ -354,8 +255,7 @@ function AppContent({ role, setRole, authReady, handleLogout }) {
             }
           />
 
-          {/* VIDEO CALL */}
-
+          {/* Video Call */}
           <Route
             path="/video-call/:roomId"
             element={
@@ -365,8 +265,7 @@ function AppContent({ role, setRole, authReady, handleLogout }) {
             }
           />
 
-          {/* ADMIN ROUTES */}
-
+          {/* Admin routes */}
           <Route
             path="/admin-dashboard"
             element={
@@ -375,7 +274,6 @@ function AppContent({ role, setRole, authReady, handleLogout }) {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/manage-users"
             element={
@@ -384,7 +282,6 @@ function AppContent({ role, setRole, authReady, handleLogout }) {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/manage-doctors"
             element={
@@ -393,7 +290,6 @@ function AppContent({ role, setRole, authReady, handleLogout }) {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/admin/add-doctor"
             element={
@@ -402,7 +298,6 @@ function AppContent({ role, setRole, authReady, handleLogout }) {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/admin/appointments"
             element={
@@ -411,7 +306,6 @@ function AppContent({ role, setRole, authReady, handleLogout }) {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/admin/users-list"
             element={
@@ -420,7 +314,6 @@ function AppContent({ role, setRole, authReady, handleLogout }) {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/reports"
             element={
@@ -436,40 +329,12 @@ function AppContent({ role, setRole, authReady, handleLogout }) {
 }
 
 function App() {
-  const [role, setRole] = useState("guest");
-  const [authReady, setAuthReady] = useState(false);
-
-  useEffect(() => {
-    const isLoggedIn =
-      sessionStorage.getItem("isLoggedIn");
-
-    const storedRole =
-      sessionStorage.getItem("role");
-
-    if (isLoggedIn === "true" && storedRole) {
-      setRole(storedRole);
-    } else {
-      setRole("guest");
-    }
-
-    setAuthReady(true);
-  }, []);
-
-  const handleLogout = () => {
-    sessionStorage.clear();
-    setRole("guest");
-    window.location.replace("/login");
-  };
-
   return (
-    <Router>
-      <AppContent
-        role={role}
-        setRole={setRole}
-        authReady={authReady}
-        handleLogout={handleLogout}
-      />
-    </Router>
+    <AuthProvider>
+      <Router>
+        <AppContent />
+      </Router>
+    </AuthProvider>
   );
 }
 
